@@ -4,16 +4,16 @@ import numpy as np
 import yfinance as yf
 import re
 import io
+import time  # ← 追加：待機時間用
 
 st.set_page_config(layout="wide", page_title="My Stock Portfolio")
 
-# --- 1. SBI証券の保有株CSV読み込み関数（アップロード対応版） ---
+# --- 1. 保有株CSV読み込み関数 ---
 def load_sbi_csv(uploaded_file):
     if uploaded_file is None:
         return None, "👈 左側のメニューから、保有株のCSVをアップロードしてください。"
 
     try:
-        # アップロードされたファイルをテキストとして読み込む
         content = uploaded_file.getvalue().decode('shift_jis', errors='replace')
         lines = content.splitlines()
         
@@ -47,7 +47,7 @@ def load_sbi_csv(uploaded_file):
     except Exception as e:
         return None, f"エラーが発生しました: {e}"
 
-# --- 2. 配当金CSV読み込み関数（アップロード対応版） ---
+# --- 2. 配当金CSV読み込み関数 ---
 def load_dividend_csv(uploaded_file):
     if uploaded_file is None:
         return None, "配当金データ(DISTRIBUTION_*.csv)をアップロードしてください。"
@@ -65,7 +65,6 @@ def load_dividend_csv(uploaded_file):
         if header_idx == -1:
             return None, "CSV内に「受渡日」のヘッダーが見つかりませんでした。"
         
-        # StringIOを使ってPandasに読み込ませる
         df_div = pd.read_csv(io.StringIO(content), skiprows=header_idx)
         
         amount_col = [c for c in df_div.columns if "受取額" in c]
@@ -92,42 +91,18 @@ def load_dividend_csv(uploaded_file):
     except Exception as e:
         return None, f"配当金CSVエラー: {e}"
 
-# ==========================================
-# メイン画面の構築
-# ==========================================
-st.title("📊 My Stock Portfolio")
-
-# --- サイドバー（ファイルのアップロードエリア） ---
-with st.sidebar:
-    st.header("📂 データのアップロード")
-    st.write("SBI証券からダウンロードしたCSVをここに入れてください。")
-    portfolio_file = st.file_uploader("1. 保有株のCSV (SaveFile.csvなど)", type=['csv'])
-    dividend_file = st.file_uploader("2. 配当金のCSV (DISTRIBUTION.csvなど)", type=['csv'])
-
-# CSVの読み込み処理
-portfolio_df, message = load_sbi_csv(portfolio_file)
-
-if portfolio_df is None or portfolio_df.empty:
-    st.info(message)
-    st.stop() # ファイルが無い場合はここで画面の描画を止める
-
-st.success(f"✅ {message}")
-
-use_api = st.toggle("🌐 最新指標(PER・PBR・EPSなど)をYahoo Financeから取得する", value=False)
-
-df = portfolio_df.copy()
-df['投資金額'] = df['取得単価'] * df['保有株数']
-df['評価額'] = df['現在値'] * df['保有株数']
-
-if use_api:
-    unique_tickers = df['銘柄コード'].unique()
-    total = len(unique_tickers)
-    api_data =[]
-
-    my_bar = st.progress(0, text="Yahoo Financeから指標を取得中...")
-
-    for i, ticker in enumerate(unique_tickers):
-        my_bar.progress(i / total, text=f"{ticker} のデータを取得中... ({i}/{total})")
+# --- 3. Yahoo Finance API 取得関数（キャッシュ＆待機時間付き） ---
+# ttl=3600 で、1度取得したデータは1時間（3600秒）再利用します
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_yahoo_finance_data(tickers):
+    api_data = []
+    total = len(tickers)
+    
+    # ここではプログレスバーではなく、文字で状況をお知らせします
+    status_text = st.empty()
+    
+    for i, ticker in enumerate(tickers):
+        status_text.text(f"Yahoo Financeからデータをゆっくり取得中... {ticker} ({i+1}/{total})")
         try:
             stock = yf.Ticker(f"{ticker}.T")
             info = stock.info
@@ -141,13 +116,50 @@ if use_api:
                 'PER': info.get('trailingPE', np.nan),
                 'PBR': info.get('priceToBook', np.nan)
             })
+            # ★ 制限回避：1銘柄取得するごとに1.5秒休む
+            time.sleep(1.5)
         except Exception as e:
             st.warning(f"⚠️ 銘柄 {ticker} の取得に失敗しました: {e}")
+            time.sleep(2.0) # エラー時も少し長めに休む
+            
+    status_text.empty() # 終わったらテキストを消す
+    return api_data
 
-    my_bar.progress(1.0, text="取得完了！")
 
-    if api_data:
-        stock_df = pd.DataFrame(api_data)
+# ==========================================
+# メイン画面の構築
+# ==========================================
+st.title("📊 My Stock Portfolio")
+
+with st.sidebar:
+    st.header("📂 データのアップロード")
+    st.write("SBI証券からダウンロードしたCSVをここに入れてください。")
+    portfolio_file = st.file_uploader("1. 保有株のCSV", type=['csv'])
+    dividend_file = st.file_uploader("2. 配当金のCSV", type=['csv'])
+
+portfolio_df, message = load_sbi_csv(portfolio_file)
+
+if portfolio_df is None or portfolio_df.empty:
+    st.info(message)
+    st.stop()
+
+st.success(f"✅ {message}")
+
+use_api = st.toggle("🌐 最新指標(PER・PBR・EPSなど)をYahoo Financeから取得する", value=False)
+
+df = portfolio_df.copy()
+df['投資金額'] = df['取得単価'] * df['保有株数']
+df['評価額'] = df['現在値'] * df['保有株数']
+
+# APIデータの取得と結合
+if use_api:
+    unique_tickers = df['銘柄コード'].unique()
+    
+    # 上で作ったキャッシュ付き関数を呼び出す
+    fetched_data = fetch_yahoo_finance_data(unique_tickers)
+    
+    if fetched_data:
+        stock_df = pd.DataFrame(fetched_data)
         stock_df['銘柄コード'] = stock_df['銘柄コード'].astype(str)
         df = pd.merge(df, stock_df, on='銘柄コード', how='left')
 
@@ -155,6 +167,7 @@ if use_api:
             df['現在値(API)'] = pd.to_numeric(df['現在値(API)'], errors='coerce')
             df['現在値'] = df['現在値(API)'].fillna(df['現在値'])
             df['評価額'] = df['現在値'] * df['保有株数']
+        st.success("✅ 指標の取得が完了しました！")
 
 for col in['1株配当', '配当利回り(%)', 'EPS', '配当性向(%)', 'PER', 'PBR']:
     if col not in df.columns:
@@ -233,7 +246,7 @@ with tab2:
                 st.error(f"エラーが発生しました: {e}")
 
 with tab3:
-    st.markdown("受け取った配当金の実績です。サイドバーにDISTRIBUTION_*.csvをアップロードしてください。")
+    st.markdown("受け取った配当金の実績です。サイドバーに配当金のCSVをアップロードしてください。")
     
     div_df, div_msg = load_dividend_csv(dividend_file)
     
