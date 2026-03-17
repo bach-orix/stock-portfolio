@@ -91,38 +91,60 @@ def load_dividend_csv(uploaded_file):
     except Exception as e:
         return None, f"配当金CSVエラー: {e}"
 
-# --- 3. Yahoo Finance API 取得関数（キャッシュ＆待機時間付き） ---
-# ttl=3600 で、1度取得したデータは1時間（3600秒）再利用します
+# --- 3. Yahoo Finance API 取得関数（キャッシュ＆リトライ＆待機時間付き） ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def fetch_yahoo_finance_data(tickers):
     api_data = []
     total = len(tickers)
-    
-    # ここではプログレスバーではなく、文字で状況をお知らせします
     status_text = st.empty()
     
     for i, ticker in enumerate(tickers):
-        status_text.text(f"Yahoo Financeからデータをゆっくり取得中... {ticker} ({i+1}/{total})")
-        try:
-            stock = yf.Ticker(f"{ticker}.T")
-            info = stock.info
-            api_data.append({
-                '銘柄コード': str(ticker),
-                '現在値(API)': info.get('currentPrice', np.nan),
-                '1株配当': info.get('dividendRate', np.nan),
-                '配当利回り(%)': info.get('dividendYield', 0) * 100 if pd.notnull(info.get('dividendYield')) else np.nan,
-                'EPS': info.get('trailingEps', np.nan),
-                '配当性向(%)': info.get('payoutRatio', 0) * 100 if pd.notnull(info.get('payoutRatio')) else np.nan,
-                'PER': info.get('trailingPE', np.nan),
-                'PBR': info.get('priceToBook', np.nan)
-            })
-            # ★ 制限回避：1銘柄取得するごとに1.5秒休む
-            time.sleep(1.5)
-        except Exception as e:
-            st.warning(f"⚠️ 銘柄 {ticker} の取得に失敗しました: {e}")
-            time.sleep(2.0) # エラー時も少し長めに休む
+        status_text.text(f"Yahoo Financeからデータを取得中... {ticker} ({i+1}/{total})")
+        
+        success = False
+        retries = 0
+        
+        # ★ 制限回避：最大3回までリトライ（再挑戦）するループ
+        while not success and retries < 3:
+            try:
+                stock = yf.Ticker(f"{ticker}.T")
+                info = stock.info
+                
+                # 情報が空っぽの場合はエラーを起こして意図的にリトライへ回す
+                if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info):
+                    raise ValueError("データが取得できませんでした")
+
+                current_price = info.get('currentPrice') or info.get('regularMarketPrice') or np.nan
+                dividend = info.get('dividendRate', np.nan)
+                
+                # ★ バグ修正：利回りが340%などになるのを防ぐため、正確に割り算する
+                if pd.notnull(current_price) and pd.notnull(dividend) and current_price > 0:
+                    yield_pct = (dividend / current_price) * 100
+                else:
+                    yield_pct = np.nan
+
+                api_data.append({
+                    '銘柄コード': str(ticker),
+                    '現在値(API)': current_price,
+                    '1株配当': dividend,
+                    '配当利回り(%)': yield_pct,
+                    'EPS': info.get('trailingEps', np.nan),
+                    '配当性向(%)': info.get('payoutRatio', 0) * 100 if pd.notnull(info.get('payoutRatio')) else np.nan,
+                    'PER': info.get('trailingPE', np.nan),
+                    'PBR': info.get('priceToBook', np.nan)
+                })
+                success = True
+                time.sleep(2.5) 
+                
+            except Exception as e:
+                retries += 1
+                if retries < 3:
+                    status_text.text(f"⚠️ {ticker} 制限に引っかかりました。5秒待って再試行します... ({retries}/2)")
+                    time.sleep(5.0) 
+                else:
+                    st.warning(f"⚠️ 銘柄 {ticker} の取得に失敗しました。")
             
-    status_text.empty() # 終わったらテキストを消す
+    status_text.empty()
     return api_data
 
 
@@ -145,7 +167,7 @@ if portfolio_df is None or portfolio_df.empty:
 
 st.success(f"✅ {message}")
 
-use_api = st.toggle("🌐 最新指標(PER・PBR・EPSなど)をYahoo Financeから取得する", value=False)
+use_api = st.toggle("🌐 最新指標(PER・PBR・EPSなど)をYahoo Financeから取得する", value=True)
 
 df = portfolio_df.copy()
 df['投資金額'] = df['取得単価'] * df['保有株数']
