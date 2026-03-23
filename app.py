@@ -167,7 +167,7 @@ if portfolio_df is None or portfolio_df.empty:
 
 st.success(f"✅ {message}")
 
-use_api = st.toggle("🌐 最新指標(PER・PBR・EPSなど)をYahoo Financeから取得する", value=True)
+use_api = st.toggle("🌐 最新指標(PER・PBR・EPSなど)をYahoo Financeから取得する", value=False)
 
 df = portfolio_df.copy()
 df['投資金額'] = df['取得単価'] * df['保有株数']
