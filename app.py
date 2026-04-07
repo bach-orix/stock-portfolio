@@ -30,7 +30,7 @@ def load_sbi_csv(uploaded_file):
 
                     shares = float(parts[2].replace(',', '').replace(' ', '')) if parts[2].strip() else 0.0
                     avg_price = float(parts[3].replace(',', '').replace(' ', '')) if parts[3].strip() else 0.0
-                    current_price = float(parts[4].replace(',', '').replace(' ', '')) if parts[4].strip() else np.nanrrent_price = float(parts[5].replace(',', '').replace(' ', '')) if parts[5].strip() else np.nan
+                    current_price = float(parts[4].replace(',', '').replace(' ', '')) if parts[4].strip() else np.nan
                     
 
                     data_list.append({
