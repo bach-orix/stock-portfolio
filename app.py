@@ -211,8 +211,8 @@ with tab1:
     df_display = df[[c for c in display_cols if c in df.columns]].copy()
 
     def fmt_money(x): return f"¥{int(x):,}" if pd.notnull(x) else "-"
-    def fmt_float(x): return f"¥{x:,.1f}" if pd.notnull(x) else "-"
-    def fmt_float(x): return f"¥{x:,.1f}" if pd.notnull(x) else "-"
+    def fmt_float(x): return f"{x:,.1f}" if pd.notnull(x) else "-"
+    def fmt_share(x): return f"{int(x):,}" if pd.notnull(x) else "-"
     def fmt_pct(x): return f"{x:.2f}%" if pd.notnull(x) else "-"
 
     df_display['現在値'] = df_display['現在値'].apply(fmt_money)
