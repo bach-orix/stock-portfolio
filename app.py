@@ -80,10 +80,7 @@ def load_dividend_csv(uploaded_file):
         df_div = df_div.dropna(subset=['受渡日']) 
         df_div['年'] = df_div['受渡日'].dt.year.astype(int).astype(str) 
         
-        if df_div[amount_col].dtype == object:
-            df_div[amount_col] = df_div[amount_col].str.replace(',', '').str.strip().astype(float)
-        else:
-            df_div[amount_col] = df_div[amount_col].astype(float)
+        df_div[amount_col] = df_div[amount_col].astype(str).str.replace(',', '', regex=False).str.strip().astype(float)
         
         yearly_div = df_div.groupby('年')[amount_col].sum().reset_index()
         yearly_div.rename(columns={amount_col: '受取配当金合計(円)'}, inplace=True)
