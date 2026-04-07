@@ -178,8 +178,8 @@ df['評価額'] = df['現在値'] * df['保有株数']
 
 # APIデータの取得と結合
 if use_api:
-    unique_tickers = df['銘柄コード'].unique()
-    
+    # .tolist() を追加して、Python標準のリスト型に変換します
+    unique_tickers = df['銘柄コード'].unique().tolist()  
     # 上で作ったキャッシュ付き関数を呼び出す
     fetched_data = fetch_yahoo_finance_data(unique_tickers)
     
