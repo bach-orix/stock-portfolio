@@ -22,13 +22,16 @@ def load_sbi_csv(uploaded_file):
             clean_line = line.replace('"', '').strip()
             parts = clean_line.split(',')
 
-            if len(parts) >= 6 and re.match(r'^\s*\d{4}\s*$', parts[0]):
+            match = re.match(r'^\s*(\d{4})\s+(.*)$', parts[0])
+            if len(parts) >= 5 and match:
                 try:
-                    code = parts[0].strip()
-                    name = parts[1].strip()
+                    code = match.group(1).strip()
+                    name = match.group(2).strip()
+
                     shares = float(parts[2].replace(',', '').replace(' ', '')) if parts[2].strip() else 0.0
-                    avg_price = float(parts[4].replace(',', '').replace(' ', '')) if parts[4].strip() else 0.0
-                    current_price = float(parts[5].replace(',', '').replace(' ', '')) if parts[5].strip() else np.nan
+                    avg_price = float(parts[3].replace(',', '').replace(' ', '')) if parts[3].strip() else 0.0
+                    current_price = float(parts[4].replace(',', '').replace(' ', '')) if parts[4].strip() else np.nanrrent_price = float(parts[5].replace(',', '').replace(' ', '')) if parts[5].strip() else np.nan
+                    
 
                     data_list.append({
                         '銘柄コード': code,
@@ -78,7 +81,7 @@ def load_dividend_csv(uploaded_file):
         df_div['年'] = df_div['受渡日'].dt.year.astype(int).astype(str) 
         
         if df_div[amount_col].dtype == object:
-            df_div[amount_col] = df_div[amount_col].str.replace(',', '').astype(float)
+            df_div[amount_col] = df_div[amount_col].str.replace(',', '').str.strip().astype(float)
         else:
             df_div[amount_col] = df_div[amount_col].astype(float)
         
@@ -208,7 +211,7 @@ with tab1:
     df_display = df[[c for c in display_cols if c in df.columns]].copy()
 
     def fmt_money(x): return f"¥{int(x):,}" if pd.notnull(x) else "-"
-    def fmt_share(x): return f"{int(x):,}株" if pd.notnull(x) else "-"
+    def fmt_float(x): return f"¥{x:,.1f}" if pd.notnull(x) else "-"
     def fmt_float(x): return f"¥{x:,.1f}" if pd.notnull(x) else "-"
     def fmt_pct(x): return f"{x:.2f}%" if pd.notnull(x) else "-"
 
