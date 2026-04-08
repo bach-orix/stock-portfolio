@@ -134,15 +134,15 @@ def fetch_yahoo_finance_data(tickers):
                     'PBR': info.get('priceToBook', np.nan)
                 })
                 success = True
-                time.sleep(2.5) 
+                time.sleep(4.0)  # ★ 取得成功時の待機を4秒に伸ばして、優しくアクセスする
                 
             except Exception as e:
                 retries += 1
                 if retries < 3:
-                    status_text.text(f"⚠️ {ticker} 制限に引っかかりました。5秒待って再試行します... ({retries}/2)")
-                    time.sleep(5.0) 
+                    status_text.text(f" ⚠️ {ticker} 制限に引っかかりました。10秒待機して再試行します... ({retries}/2)")
+                    time.sleep(10.0)  # ★ 制限に引っかかったら、しっかり10秒休ませる
                 else:
-                    st.warning(f"⚠️ 銘柄 {ticker} の取得に失敗しました。")
+                    st.warning(f" ⚠️ 銘柄 {ticker} の取得に失敗しました。")
             
     status_text.empty()
     return api_data
