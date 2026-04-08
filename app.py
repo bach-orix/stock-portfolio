@@ -222,9 +222,9 @@ with tab1:
     df_display['配当利回り(%)'] = df_display['配当利回り(%)'].apply(fmt_pct)
 
     if 'PER' in df_display.columns:
-        df_display['PER'] = df_display['PER'].apply(lambda x: f"🔵 {x:.1f}倍" if pd.notnull(x) and x <= 10 else (f"🔴 {x:.1f}倍" if pd.notnull(x) and x >= 20 else (f"{x:.1f}倍" if pd.notnull(x) else "-")))
+        df_display['PER'] = df_display['PER'].apply(lambda x: f"⭕️ {x:.1f}倍" if pd.notnull(x) and x <= 10 else (f"⚠️ {x:.1f}倍" if pd.notnull(x) and x >= 20 else (f"{x:.1f}倍" if pd.notnull(x) else "-")))
     if 'PBR' in df_display.columns:
-        df_display['PBR'] = df_display['PBR'].apply(lambda x: f"🔵 {x:.2f}倍" if pd.notnull(x) and x <= 1.0 else (f"🔴 {x:.2f}倍" if pd.notnull(x) and x >= 1.5 else (f"{x:.2f}倍" if pd.notnull(x) else "-")))
+        df_display['PBR'] = df_display['PBR'].apply(lambda x: f"⭕️ {x:.2f}倍" if pd.notnull(x) and x <= 1.0 else (f"⚠️ {x:.2f}倍" if pd.notnull(x) and x >= 1.5 else (f"{x:.2f}倍" if pd.notnull(x) else "-")))
     if '配当性向(%)' in df_display.columns:
         df_display['配当性向(%)'] = df_display['配当性向(%)'].apply(lambda x: f"⚠️ {x:.1f}%" if pd.notnull(x) and x >= 90 else (f"{x:.1f}%" if pd.notnull(x) else "-"))
 
