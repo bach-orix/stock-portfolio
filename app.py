@@ -23,16 +23,21 @@ def load_sbi_csv(uploaded_file):
             parts = clean_line.split(',')
 
             match = re.match(r'^\s*(\d{4})\s+(.*)$', parts[0])
-            if len(parts) >= 5 and match:
+            if len(parts) >= 6 and re.match(r'^\d{4}$', parts[0]):
                 try:
-                    code = match.group(1).strip()
-                    name = match.group(2).strip()
+                    # 【修正2】実際のCSVの列構成に合わせて割り当てを変更
+                    code = parts[0].strip()       # 1列目: 銘柄コード
+                    name = parts[1].strip()       # 2列目: 銘柄名称
 
+                    # 3列目: 保有株数
                     shares = float(parts[2].replace(',', '').replace(' ', '')) if parts[2].strip() else 0.0
-                    avg_price = float(parts[3].replace(',', '').replace(' ', '')) if parts[3].strip() else 0.0
-                    current_price = float(parts[4].replace(',', '').replace(' ', '')) if parts[4].strip() else np.nan
                     
-
+                    # 5列目: 取得単価 (※parts[3]の「売却注文中」は飛ばす)
+                    avg_price = float(parts[4].replace(',', '').replace(' ', '')) if parts[4].strip() else 0.0
+                    
+                    # 6列目: 現在値
+                    current_price = float(parts[5].replace(',', '').replace(' ', '')) if parts[5].strip() else np.nan
+                    
                     data_list.append({
                         '銘柄コード': code,
                         '銘柄名称': name,
