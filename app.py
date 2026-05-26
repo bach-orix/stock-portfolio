@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
+from yahooquery import Ticker
 import re
 import io
 import time  # ← 追加：待機時間用
@@ -101,21 +102,24 @@ def load_dividend_csv(uploaded_file):
 def fetch_yahoo_finance_data(tickers):
 
     api_data = []
-    total = len(tickers)
 
     status_text = st.empty()
 
     for i, ticker in enumerate(tickers):
 
         status_text.text(
-            f"Yahoo Financeから取得中... {ticker} ({i+1}/{total})"
+            f"データ取得中... {ticker} ({i+1}/{len(tickers)})"
         )
 
         try:
 
-            stock = yf.Ticker(f"{ticker}.T")
+            code = f"{ticker}.T"
 
-            # 株価取得（安定）
+            # ----------------------
+            # 株価取得
+            # ----------------------
+            stock = yf.Ticker(code)
+
             hist = stock.history(period="5d")
 
             if hist.empty:
@@ -123,42 +127,55 @@ def fetch_yahoo_finance_data(tickers):
 
             current_price = hist["Close"].iloc[-1]
 
-            # 配当取得
-            divs = stock.dividends
+            # ----------------------
+            # yahooquery取得
+            # ----------------------
+            yq = Ticker(code)
 
-            if not divs.empty:
-                annual_dividend = divs.tail(4).sum()
-            else:
-                annual_dividend = np.nan
+            summary = yq.summary_detail.get(code, {})
+            financial = yq.financial_data.get(code, {})
+            key_stats = yq.key_stats.get(code, {})
 
-            # 配当利回り
-            if pd.notnull(annual_dividend):
+            # ----------------------
+            # 各種指標
+            # ----------------------
+            dividend = summary.get("dividendRate", np.nan)
+
+            if pd.notnull(dividend):
                 yield_pct = (
-                    annual_dividend / current_price
+                    dividend / current_price
                 ) * 100
             else:
                 yield_pct = np.nan
 
-            # PER/PBR/EPS取得（失敗しても止まらない）
-            try:
-                info = stock.fast_info
-            except:
-                info = {}
+            eps = key_stats.get("trailingEps", np.nan)
 
+            per = summary.get("trailingPE", np.nan)
+
+            pbr = key_stats.get("priceToBook", np.nan)
+
+            payout = financial.get("payoutRatio", np.nan)
+
+            if pd.notnull(payout):
+                payout *= 100
+
+            # ----------------------
+            # 保存
+            # ----------------------
             api_data.append({
                 '銘柄コード': str(ticker),
                 '現在値(API)': current_price,
-                '1株配当': annual_dividend,
+                '1株配当': dividend,
                 '配当利回り(%)': yield_pct,
-                'EPS': info.get('lastPrice', np.nan),
-                'PER': np.nan,
-                'PBR': np.nan,
-                '配当性向(%)': np.nan
+                'EPS': eps,
+                'PER': per,
+                'PBR': pbr,
+                '配当性向(%)': payout
             })
 
             time.sleep(1.0)
 
-        except Exception:
+        except Exception as e:
 
             st.warning(
                 f"⚠️ 銘柄 {ticker} の取得に失敗しました"
