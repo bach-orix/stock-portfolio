@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from yahooquery import Ticker
 import re
 import io
 import time  # ← 追加：待機時間用
@@ -98,94 +97,61 @@ def load_dividend_csv(uploaded_file):
         return None, f"配当金CSVエラー: {e}"
 
 # --- 3. Yahoo Finance API 取得関数（キャッシュ＆リトライ＆待機時間付き） ---
-@st.cache_data(ttl=86400, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
 def fetch_yahoo_finance_data(tickers):
-
     api_data = []
-
+    total = len(tickers)
     status_text = st.empty()
-
+    
     for i, ticker in enumerate(tickers):
+        status_text.text(f"Yahoo Financeからデータを取得中... {ticker} ({i+1}/{total})")
+        
+        success = False
+        retries = 0
+        
+        # ★ 制限回避：最大3回までリトライ（再挑戦）するループ
+        while not success and retries < 3:
+            try:
+                stock = yf.Ticker(f"{ticker}.T")
+                info = stock.info
+                
+                # 情報が空っぽの場合はエラーを起こして意図的にリトライへ回す
+                if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info):
+                    raise ValueError("データが取得できませんでした")
 
-        status_text.text(
-            f"データ取得中... {ticker} ({i+1}/{len(tickers)})"
-        )
+                current_price = info.get('currentPrice') or info.get('regularMarketPrice') or np.nan
+                dividend = info.get('dividendRate', np.nan)
+                
+                # ★ バグ修正：利回りが340%などになるのを防ぐため、正確に割り算する
+                if pd.notnull(current_price) and pd.notnull(dividend) and current_price > 0:
+                    yield_pct = (dividend / current_price) * 100
+                else:
+                    yield_pct = np.nan
 
-        try:
-
-            code = f"{ticker}.T"
-
-            # ----------------------
-            # 株価取得
-            # ----------------------
-            stock = yf.Ticker(code)
-
-            hist = stock.history(period="5d")
-
-            if hist.empty:
-                raise ValueError("株価取得失敗")
-
-            current_price = hist["Close"].iloc[-1]
-
-            # ----------------------
-            # yahooquery取得
-            # ----------------------
-            yq = Ticker(code)
-
-            summary = yq.summary_detail.get(code, {})
-            financial = yq.financial_data.get(code, {})
-            key_stats = yq.key_stats.get(code, {})
-
-            # ----------------------
-            # 各種指標
-            # ----------------------
-            dividend = summary.get("dividendRate", np.nan)
-
-            if pd.notnull(dividend):
-                yield_pct = (
-                    dividend / current_price
-                ) * 100
-            else:
-                yield_pct = np.nan
-
-            eps = key_stats.get("trailingEps", np.nan)
-
-            per = summary.get("trailingPE", np.nan)
-
-            pbr = key_stats.get("priceToBook", np.nan)
-
-            payout = financial.get("payoutRatio", np.nan)
-
-            if pd.notnull(payout):
-                payout *= 100
-
-            # ----------------------
-            # 保存
-            # ----------------------
-            api_data.append({
-                '銘柄コード': str(ticker),
-                '現在値(API)': current_price,
-                '1株配当': dividend,
-                '配当利回り(%)': yield_pct,
-                'EPS': eps,
-                'PER': per,
-                'PBR': pbr,
-                '配当性向(%)': payout
-            })
-
-            time.sleep(1.0)
-
-        except Exception as e:
-
-            st.warning(
-                f"⚠️ 銘柄 {ticker} の取得に失敗しました"
-            )
-
-            continue
-
+                api_data.append({
+                    '銘柄コード': str(ticker),
+                    '現在値(API)': current_price,
+                    '1株配当': dividend,
+                    '配当利回り(%)': yield_pct,
+                    'EPS': info.get('trailingEps', np.nan),
+                    '配当性向(%)': info.get('payoutRatio', 0) * 100 if pd.notnull(info.get('payoutRatio')) else np.nan,
+                    'PER': info.get('trailingPE', np.nan),
+                    'PBR': info.get('priceToBook', np.nan)
+                })
+                success = True
+                time.sleep(4.0)  # ★ 取得成功時の待機を4秒に伸ばして、優しくアクセスする
+                
+            except Exception as e:
+                retries += 1
+                if retries < 3:
+                    status_text.text(f" ⚠️ {ticker} 制限に引っかかりました。10秒待機して再試行します... ({retries}/2)")
+                    time.sleep(10.0)  # ★ 制限に引っかかったら、しっかり10秒休ませる
+                else:
+                    st.warning(f" ⚠️ 銘柄 {ticker} の取得に失敗しました。")
+            
     status_text.empty()
-
     return api_data
+
 
 # ==========================================
 # メイン画面の構築
